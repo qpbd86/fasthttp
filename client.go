@@ -554,34 +554,34 @@ func (c *Client) CloseIdleConnections() {
 }
 
 func (c *Client) mCleaner(m map[string]*HostClient) {
-	mustStop := false
+	// mustStop := false
 
-	sleep := c.MaxIdleConnDuration
-	if sleep < time.Second {
-		sleep = time.Second
-	} else if sleep > 10*time.Second {
-		sleep = 10 * time.Second
-	}
+	// sleep := c.MaxIdleConnDuration
+	// if sleep < time.Second {
+	// 	sleep = time.Second
+	// } else if sleep > 10*time.Second {
+	// 	sleep = 10 * time.Second
+	// }
 
-	for {
-		c.mLock.Lock()
-		for k, v := range m {
-			v.connsLock.Lock()
-			if v.connsCount == 0 && atomic.LoadInt32(&v.pendingClientRequests) == 0 {
-				delete(m, k)
-			}
-			v.connsLock.Unlock()
-		}
-		if len(m) == 0 {
-			mustStop = true
-		}
-		c.mLock.Unlock()
+	// for {
+	// 	c.mLock.Lock()
+	// 	for k, v := range m {
+	// 		v.connsLock.Lock()
+	// 		if v.connsCount == 0 && atomic.LoadInt32(&v.pendingClientRequests) == 0 {
+	// 			delete(m, k)
+	// 		}
+	// 		v.connsLock.Unlock()
+	// 	}
+	// 	if len(m) == 0 {
+	// 		mustStop = true
+	// 	}
+	// 	c.mLock.Unlock()
 
-		if mustStop {
-			break
-		}
-		time.Sleep(sleep)
-	}
+	// 	if mustStop {
+	// 		break
+	// 	}
+	// 	time.Sleep(sleep)
+	// }
 }
 
 // DefaultMaxConnsPerHost is the maximum number of concurrent connections
@@ -1682,59 +1682,59 @@ func (c *HostClient) CloseIdleConnections() {
 }
 
 func (c *HostClient) connsCleaner() {
-	var (
-		scratch             []*clientConn
-		maxIdleConnDuration = c.MaxIdleConnDuration
-	)
-	if maxIdleConnDuration <= 0 {
-		maxIdleConnDuration = DefaultMaxIdleConnDuration
-	}
-	for {
-		currentTime := time.Now()
+	// var (
+	// 	scratch             []*clientConn
+	// 	maxIdleConnDuration = c.MaxIdleConnDuration
+	// )
+	// if maxIdleConnDuration <= 0 {
+	// 	maxIdleConnDuration = DefaultMaxIdleConnDuration
+	// }
+	// for {
+	// 	currentTime := time.Now()
 
-		// Determine idle connections to be closed.
-		c.connsLock.Lock()
-		conns := c.conns
-		n := len(conns)
-		i := 0
-		for i < n && currentTime.Sub(conns[i].lastUseTime) > maxIdleConnDuration {
-			i++
-		}
-		sleepFor := maxIdleConnDuration
-		if i < n {
-			// + 1 so we actually sleep past the expiration time and not up to it.
-			// Otherwise the > check above would still fail.
-			sleepFor = maxIdleConnDuration - currentTime.Sub(conns[i].lastUseTime) + 1
-		}
-		scratch = append(scratch[:0], conns[:i]...)
-		if i > 0 {
-			m := copy(conns, conns[i:])
-			for i = m; i < n; i++ {
-				conns[i] = nil
-			}
-			c.conns = conns[:m]
-		}
-		c.connsLock.Unlock()
+	// 	// Determine idle connections to be closed.
+	// 	c.connsLock.Lock()
+	// 	conns := c.conns
+	// 	n := len(conns)
+	// 	i := 0
+	// 	for i < n && currentTime.Sub(conns[i].lastUseTime) > maxIdleConnDuration {
+	// 		i++
+	// 	}
+	// 	sleepFor := maxIdleConnDuration
+	// 	if i < n {
+	// 		// + 1 so we actually sleep past the expiration time and not up to it.
+	// 		// Otherwise the > check above would still fail.
+	// 		sleepFor = maxIdleConnDuration - currentTime.Sub(conns[i].lastUseTime) + 1
+	// 	}
+	// 	scratch = append(scratch[:0], conns[:i]...)
+	// 	if i > 0 {
+	// 		m := copy(conns, conns[i:])
+	// 		for i = m; i < n; i++ {
+	// 			conns[i] = nil
+	// 		}
+	// 		c.conns = conns[:m]
+	// 	}
+	// 	c.connsLock.Unlock()
 
-		// Close idle connections.
-		for i, cc := range scratch {
-			c.closeConn(cc)
-			scratch[i] = nil
-		}
+	// 	// Close idle connections.
+	// 	for i, cc := range scratch {
+	// 		c.closeConn(cc)
+	// 		scratch[i] = nil
+	// 	}
 
-		// Determine whether to stop the connsCleaner.
-		c.connsLock.Lock()
-		mustStop := c.connsCount == 0
-		if mustStop {
-			c.connsCleanerRun = false
-		}
-		c.connsLock.Unlock()
-		if mustStop {
-			break
-		}
+	// 	// Determine whether to stop the connsCleaner.
+	// 	c.connsLock.Lock()
+	// 	mustStop := c.connsCount == 0
+	// 	if mustStop {
+	// 		c.connsCleanerRun = false
+	// 	}
+	// 	c.connsLock.Unlock()
+	// 	if mustStop {
+	// 		break
+	// 	}
 
-		time.Sleep(sleepFor)
-	}
+	// 	time.Sleep(sleepFor)
+	// }
 }
 
 func (c *HostClient) closeConn(cc *clientConn) {
