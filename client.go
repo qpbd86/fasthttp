@@ -14,7 +14,37 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"gitlab.indexexchange.com/exchange-node/telemetry/metrics"
 )
+
+func init() {
+	_ = metrics.Register(&metrics.Histogram{
+		Name:    "acquire-conn-time",
+		Buckets: []float64{0, 1, 2, 5, 10, 20, 50, 100},
+		Unit:    metrics.UnitMilliseconds,
+		Tags:    []string{"addr"},
+	})
+
+	_ = metrics.Register(&metrics.Histogram{
+		Name:    "write-time",
+		Buckets: []float64{0, 1, 2, 5, 10, 20, 50, 100},
+		Unit:    metrics.UnitMilliseconds,
+		Tags:    []string{"addr"},
+	})
+
+	_ = metrics.Register(&metrics.Histogram{
+		Name:    "read-time",
+		Buckets: []float64{0, 1, 2, 5, 10, 20, 50, 100},
+		Unit:    metrics.UnitMilliseconds,
+		Tags:    []string{"addr"},
+	})
+
+	_ = metrics.Register(&metrics.LastValue{
+		Name: "conns-count",
+		Tags: []string{"addr"},
+	})
+}
 
 // Do performs the given http request and fills the given http response.
 //
@@ -1414,7 +1444,10 @@ func (c *HostClient) doNonNilReqResp(req *Request, resp *Response) (bool, error)
 		return err == nil, err
 	}
 
+	timing := time.Now()
 	cc, err := c.acquireConn(req.timeout, req.ConnectionClose())
+	timingd := time.Since(timing)
+	metrics.RecordWithoutContext("acquire-conn-time", float64(timingd.Milliseconds()), metrics.Tags{"addr": c.Addr})
 	if err != nil {
 		return false, err
 	}
@@ -1438,6 +1471,7 @@ func (c *HostClient) doNonNilReqResp(req *Request, resp *Response) (bool, error)
 		resetConnection = true
 	}
 
+	timing = time.Now()
 	bw := c.acquireWriter(conn)
 	err = req.Write(bw)
 
@@ -1449,6 +1483,9 @@ func (c *HostClient) doNonNilReqResp(req *Request, resp *Response) (bool, error)
 		err = bw.Flush()
 	}
 	c.releaseWriter(bw)
+	timingd = time.Since(timing)
+	metrics.RecordWithoutContext("write-time", float64(timingd.Milliseconds()), metrics.Tags{"addr": c.Addr})
+
 	isConnRST := isConnectionReset(err)
 	if err != nil && !isConnRST {
 		c.closeConn(cc)
@@ -1472,9 +1509,12 @@ func (c *HostClient) doNonNilReqResp(req *Request, resp *Response) (bool, error)
 		resp.Header.DisableNormalizing()
 	}
 
+	timing = time.Now()
 	br := c.acquireReader(conn)
 	err = resp.ReadLimitBody(br, c.MaxResponseBodySize)
 	c.releaseReader(br)
+	timingd = time.Since(timing)
+	metrics.RecordWithoutContext("read-time", float64(timingd.Milliseconds()), metrics.Tags{"addr": c.Addr})
 	if err != nil {
 		c.closeConn(cc)
 		// Don't retry in case of ErrBodyTooLarge since we will just get the same again.
@@ -1552,6 +1592,7 @@ func (c *HostClient) acquireConn(reqTimeout time.Duration, connectionClose bool)
 		}
 		if c.connsCount < maxConns {
 			c.connsCount++
+			metrics.RecordWithoutContext("conns-count", float64(c.connsCount), metrics.Tags{"addr": c.Addr})
 			createConn = true
 			if !c.connsCleanerRun && !connectionClose {
 				startCleaner = true
@@ -1747,6 +1788,7 @@ func (c *HostClient) decConnsCount() {
 	if c.MaxConnWaitTimeout <= 0 {
 		c.connsLock.Lock()
 		c.connsCount--
+		metrics.RecordWithoutContext("conns-count", float64(c.connsCount), metrics.Tags{"addr": c.Addr})
 		c.connsLock.Unlock()
 		return
 	}
@@ -1766,6 +1808,7 @@ func (c *HostClient) decConnsCount() {
 	}
 	if !dialed {
 		c.connsCount--
+		metrics.RecordWithoutContext("conns-count", float64(c.connsCount), metrics.Tags{"addr": c.Addr})
 	}
 }
 
